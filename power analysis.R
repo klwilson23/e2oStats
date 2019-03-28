@@ -23,11 +23,11 @@ costSamp <- 0.5 # hours of work to add extra sample
 
 nSamps <- 25
 nSites <- 15
-effect <- 0.5
-sd.obs <- 1 # what is the sample variance
+effect <- 2
+sd.obs <- 3 # what is the sample variance
 sd.group <- 1 # what is the variability across sites/groups
 
-Nboots <- 25 # how many bootstraps to run: the larger the better (but slow!)
+Nboots <- 1000 # how many bootstraps to run: the larger the better (but slow!)
 
 # Make simulated dataframe to see what is happening in our statsig function
 site <- as.factor(rep(1:nSites, each = nSamps)) # site ID
@@ -42,8 +42,12 @@ y_bar <- rep(round(0.2 + effect * phos_bar + rnorm(length(phos_bar), mean = 0, s
 y_samps  = round(rnorm(length(phos_samp), mean = rep(round(0.2 + effect * phos_bar + rnorm(length(phos_bar), mean = 0, sd = sd.group), 3), each = nSamps), sd = sd.obs), 3) # measured fish abundance at each of five sampling points per site.
 
 # View the simulated dataset
-data.frame(site = site, phos_samp, y_bar, y_samps)
+dat <- data.frame(site = site, phos_samp, y_bar, y_samps)
 
+head(dat)
+
+
+plot(dat$phos_samp,dat$y_samps)
 
 
 statsig <- function(nSamps, nSites, effect, sd.obs, sd.group) {
@@ -67,12 +71,12 @@ statsig <- function(nSamps, nSites, effect, sd.obs, sd.group) {
   # Calculate power for lm
   power1 <- effect >= fit1_summ$lower_ci[2] & 
             effect <= fit1_summ$upper_ci[2] &
-            0 <= fit2_summ$lower_ci[2]
+            0 <= (fit1_summ$lower_ci[2] * fit1_summ$upper_ci[2])
   # Calculate power for mixed model
   power2 <- effect >= fit2_summ$lower_ci[2] & 
             effect <= fit2_summ$upper_ci[2] &
-            0 <= fit2_summ$lower_ci[2]
-#
+            0 <= (fit2_summ$lower_ci[2] * fit2_summ$upper_ci[2])
+  
   round(c(slope1 = fit1_summ$estimate[2], R1 = summary(fit1)$adj.r.squared, 
           Type_I_error_1 = fit1_summ$p.value[2] <= 0.05, power1 = power1, 
           slope2 = fit2_summ$estimate[2], R1 = summary(fit2)$adj.r.squared, 
@@ -80,9 +84,10 @@ statsig <- function(nSamps, nSites, effect, sd.obs, sd.group) {
 }
 
 # set up our exploration and scenarios
-effect_vec <- c(0, 0.25, 2) # no effect, small effect, big effect
+effect_vec <- c(0, 1, 2) # no effect, small effect, big effect
 nSites <- seq(from = 5, to = 50, by = 5) # number of sites to sample
 nSamps <- c(3, 5, 10, 15, 20, 25, 30, 35, 50, 100) # number of samples per sight
+
 results <- 
   array(NA, dim = c(length(effect_vec), length(nSites), length(nSamps), 7), 
         dimnames=list("Effect size"=effect_vec, "N Sites"=nSites, 
@@ -95,7 +100,7 @@ ptm = Sys.time()
 for(i in 1:length(effect_vec)){
   for(j in 1:length(nSites)){
     for(k in 1:length(nSamps)){
-      out <- replicate(Nboots, statsig(nSamps=nSamps[1], nSites=nSites[1], effect=effect_vec[1], sd.obs=sd.obs, sd.group=sd.group), simplify=T)
+      out <- replicate(Nboots, statsig(nSamps=nSamps[k], nSites=nSites[j], effect=effect_vec[i], sd.obs=sd.obs, sd.group=sd.group), simplify=T)
       results[i, j, k, ] <- rowMeans(out)
       setTxtProgressBar(progBar, counter)
       counter <- counter + 1
@@ -106,7 +111,7 @@ endtime <- Sys.time()-ptm
 endtime
 
 # analyze your cost-benefit ratios
-power <- results[3, , , "Power (lme4)"]
+power <- results[2, , , "Power (lme4)"]
 
 cost <- sapply(costSamp*nSamps, function(x){x+costSite*nSites})
 dimnames(cost) <- dimnames(power)
@@ -117,11 +122,16 @@ cost2 <- cost
 power2[power < 0.8] <- NA
 cost2[power<0.8] <- NA
 
+cost2 <- cost2/max(cost2,na.rm=T) # evaluate cost on the same scale as statistical power: 0-1
+
 costBenefit <- which(cost2/power2==min(cost2/power2,na.rm=T), arr.ind=T)
 paste("Sites = ", nSites[costBenefit[1]], " & ", 
         "Samples = ", nSamps[costBenefit[2]], sep="")
 
 layout(1)
 par(mar=c(5, 4, 3, 3))
-filled.contour(x=nSamps,  y=nSites,  z=results[3, , , "Power (lme4)"], xlab='Number of samples', ylab='Number of sites', color.palette = colorRampPalette(c("red", 'orange', 'dodgerblue', "yellow")))
+filled.contour(x=nSites,  y=nSamps,  z=results[2, , , "Power (lme4)"], ylab='Number of samples', xlab='Number of sites', color.palette = colorRampPalette(c("red", 'orange', 'dodgerblue', "yellow")))
 
+layout(1)
+par(mar=c(5, 4, 3, 3))
+filled.contour(x=nSites,  y=nSamps,  z=results[2, , , "Type I error (lme4)"], ylab='Number of samples', xlab='Number of sites', color.palette = colorRampPalette(c("red", 'orange', 'dodgerblue', "yellow")))
