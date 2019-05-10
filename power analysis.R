@@ -24,7 +24,7 @@ costSamp <- 0.5 # hours of work to add extra sample
 nSamps <- 25
 nSites <- 15
 effect <- 2
-sd.obs <- 3 # what is the sample variance
+sd.obs <- 4 # what is the sample variance
 sd.group <- 1 # what is the variability across sites/groups
 
 Nboots <- 1000 # how many bootstraps to run: the larger the better (but slow!)
